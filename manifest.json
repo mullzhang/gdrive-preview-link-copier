@@ -3,6 +3,11 @@
   "name": "Drive Preview Link Copier",
   "version": "0.1.0",
   "description": "Convert Google Docs, Sheets, and Slides links into Drive preview URLs.",
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
   "permissions": [
     "contextMenus",
     "activeTab",
@@ -31,7 +36,12 @@
   ],
   "action": {
     "default_title": "Copy preview link",
-    "default_popup": "popup.html"
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
   },
   "options_ui": {
     "page": "options.html",
