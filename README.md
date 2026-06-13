@@ -2,9 +2,15 @@
 
 A Chrome extension that converts Google Docs / Sheets / Slides links into Google Drive preview URLs and copies them to the clipboard.
 
+## Motivation
+
+Google Drive links for Office files can open the file in Google's web editors, such as Google Docs, Sheets, or Slides. That is convenient, but it can also change the document's appearance, especially fonts and layout.
+
+Opening the file through Google Drive's preview view avoids that automatic conversion path and keeps the file closer to its original rendering. If the Google Drive desktop app is installed, the preview page can also be used as a path to open Office files in the corresponding desktop app.
+
 ## Features
 
-This extension lets you copy preview links from three places:
+This extension lets you copy preview links from these places:
 
 1. The right-click menu in the Google Drive file list
 2. The share menu in the top-right corner of Google Docs / Sheets / Slides
@@ -43,13 +49,20 @@ Or press `Command+Shift+Y`.
 
 This is useful for links copied from the Google Drive desktop app.
 
-### Copy from the current Google page
-
-Open a Google Docs / Sheets / Slides file and use the page share menu integration.
-
 If the shortcut does not work, check the shortcut assignment for this extension at `chrome://extensions/shortcuts`.
 
-You can switch the extension UI language between English and Japanese from the extension options page.
+The shortcut runs in the active tab, so it may not work on Chrome internal pages such as `chrome://extensions`.
+
+### Language
+
+The default UI language is English. You can switch the extension UI between English and Japanese from the extension options page:
+
+1. Open `chrome://extensions`.
+2. Open the details page for this extension.
+3. Click "Extension options".
+4. Select "English" or "Japanese".
+
+The context menu, popup, injected menu item, and status messages follow this setting.
 
 ## Supported URLs
 
@@ -60,6 +73,12 @@ You can switch the extension UI language between English and Japanese from the e
 - `https://drive.google.com/file/d/{FILE_ID}/view`
 
 If the original URL contains a `resourcekey`, it is preserved in the converted URL.
+
+## Behavior
+
+- The preview link is copied directly to the clipboard.
+- A short non-blocking status message is shown after copy operations.
+- Google Drive context menus are closed automatically after "Copy preview link" runs.
 
 ## Example
 
