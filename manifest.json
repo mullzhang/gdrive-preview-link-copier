@@ -6,6 +6,7 @@
   "permissions": [
     "contextMenus",
     "activeTab",
+    "scripting",
     "offscreen",
     "clipboardWrite",
     "clipboardRead"
@@ -27,10 +28,12 @@
     }
   ],
   "action": {
-    "default_title": "プレビューリンクをコピー"
+    "default_title": "プレビューリンクをコピー",
+    "default_popup": "popup.html"
   },
   "commands": {
-    "_execute_action": {
+    "convert_clipboard_to_preview": {
+      "description": "クリップボードのリンクをプレビューリンクに変換",
       "suggested_key": {
         "default": "Ctrl+Shift+Y",
         "mac": "Command+Shift+Y"

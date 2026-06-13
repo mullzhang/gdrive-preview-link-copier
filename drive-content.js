@@ -30,36 +30,14 @@ document.addEventListener(
   true
 );
 
-document.addEventListener(
-  "keydown",
-  async (event) => {
-    if (!isCopyShortcut(event)) {
-      return;
-    }
-
-    event.preventDefault();
-    event.stopPropagation();
-    event.stopImmediatePropagation();
-
-    await copyPreviewFromPage("keydown");
-  },
-  true
-);
-
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  if (message?.type !== "COPY_PREVIEW_FROM_PAGE") {
+  if (message?.type === "SHOW_TOAST") {
+    showToast(message.message, message.tone);
+    sendResponse({ ok: true });
     return false;
   }
 
-  (async () => {
-    const result = await copyPreviewFromPage(`message:${message.source || "unknown"}`);
-    sendResponse({
-      handled: true,
-      ok: result.ok
-    });
-  })();
-
-  return true;
+  return false;
 });
 
 const observer = new MutationObserver(() => {
@@ -211,37 +189,6 @@ function findMenuContainer(element) {
   );
 }
 
-function isCopyShortcut(event) {
-  return (
-    event.metaKey &&
-    event.shiftKey &&
-    !event.ctrlKey &&
-    !event.altKey &&
-    event.code === "KeyY"
-  );
-}
-
-async function copyPreviewFromPage(source) {
-  const debug = createDebugLog(null);
-  debug.steps.push({
-    step: "trigger",
-    ok: true,
-    detail: source
-  });
-
-  const fileInfo =
-    readFileInfoFromUrl(window.location.href) || findFileInfo(debug);
-  const result = fileInfo
-    ? await copyPreviewUrlFromFileInfo(fileInfo, debug)
-    : await copyPreviewUrlFromCurrentUrl(debug);
-
-  if (!result.ok) {
-    reportFailure(debug);
-  }
-
-  return result;
-}
-
 function findFileInfo(debug) {
   const readers = [
     ["currentUrl", () => readFileInfoFromUrl(window.location.href)],
@@ -318,21 +265,6 @@ async function copyPreviewUrlFromDriveMenu(copyLinkItem, debug) {
   }
 
   return writeText(converted, debug, "clipboard:writeConvertedCopiedText");
-}
-
-async function copyPreviewUrlFromCurrentUrl(debug) {
-  const converted = convertGoogleUrlToDrivePreview(window.location.href);
-  debug.steps.push({
-    step: "convertCurrentUrl",
-    ok: Boolean(converted),
-    detail: converted || window.location.href
-  });
-
-  if (!converted) {
-    return { ok: false };
-  }
-
-  return writeText(converted, debug, "clipboard:writeCurrentUrl");
 }
 
 function readFileInfoFromSelectedRows() {

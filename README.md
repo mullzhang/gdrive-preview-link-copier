@@ -8,7 +8,7 @@ This extension lets you copy preview links from three places:
 
 1. The right-click menu in the Google Drive file list
 2. The share menu in the top-right corner of Google Docs / Sheets / Slides
-3. The extension icon or keyboard shortcut while viewing a Google Docs / Sheets / Slides file
+3. The extension icon menu or keyboard shortcut from a URL already copied to the clipboard
 
 ## Installation
 
@@ -32,9 +32,20 @@ This extension lets you copy preview links from three places:
 2. Open the share menu in the top-right corner.
 3. Click "Copy preview link" below "Copy link".
 
-### Copy from the extension icon or shortcut
+### Convert from the clipboard
 
-Open a Google Docs / Sheets / Slides file, then click the extension icon or press `Command+Shift+Y`.
+Copy a Google Docs / Sheets / Slides or Drive URL to the clipboard, then either:
+
+1. Click the extension icon.
+2. Click "クリップボードのリンクをプレビューリンクに変換".
+
+Or press `Command+Shift+Y`.
+
+This is useful for links copied from the Google Drive desktop app.
+
+### Copy from the current Google page
+
+Open a Google Docs / Sheets / Slides file and use the page share menu integration.
 
 If the shortcut does not work, check the shortcut assignment for this extension at `chrome://extensions/shortcuts`.
 

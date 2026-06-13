@@ -17,13 +17,14 @@ chrome.contextMenus.onClicked.addListener(async (info) => {
   await convertAndCopy(info.linkUrl);
 });
 
-chrome.action.onClicked.addListener(async (tab) => {
-  const handledByPage = await copyFromPage(tab, "action");
-  if (handledByPage) {
+chrome.commands.onCommand.addListener(async (command) => {
+  if (command !== "convert_clipboard_to_preview") {
     return;
   }
 
-  await convertAndCopy(tab?.url);
+  const result = await convertClipboardFromActiveTab();
+  await showActionBadge(result);
+  await notifyActiveTab(result);
 });
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
@@ -52,6 +53,21 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       try {
         await copyText(message.text);
         sendResponse({ ok: true });
+      } catch (error) {
+        sendResponse({
+          ok: false,
+          error: String(error)
+        });
+      }
+    })();
+
+    return true;
+  }
+
+  if (message?.type === "CONVERT_PREVIEW_TEXT") {
+    (async () => {
+      try {
+        sendResponse(convertText(message.text));
       } catch (error) {
         sendResponse({
           ok: false,
@@ -108,26 +124,64 @@ async function convertAndCopy(sourceUrl) {
   await copyText(converted);
 }
 
-async function copyFromPage(tab, source) {
-  if (!tab?.id || !tab.url) {
-    return false;
+function convertText(text) {
+  const converted = convertGoogleUrlToDrivePreview(text);
+
+  if (!converted) {
+    return {
+      ok: false,
+      error: "有効なGoogle Docs/Sheets/SlidesまたはDriveのリンクが見つかりませんでした"
+    };
   }
 
-  const url = new URL(tab.url);
-  if (url.hostname !== "drive.google.com" && url.hostname !== "docs.google.com") {
-    return false;
+  return {
+    ok: true,
+    url: converted
+  };
+}
+
+async function convertClipboardFromActiveTab() {
+  const tabs = await chrome.tabs.query({
+    active: true,
+    currentWindow: true
+  });
+  const tab = tabs[0];
+
+  if (!tab?.id) {
+    return {
+      ok: false,
+      error: "アクティブなタブが見つかりませんでした"
+    };
   }
 
   try {
-    const response = await chrome.tabs.sendMessage(tab.id, {
-      type: "COPY_PREVIEW_FROM_PAGE",
-      source
+    const [readInjection] = await chrome.scripting.executeScript({
+      target: {
+        tabId: tab.id
+      },
+      func: () => navigator.clipboard.readText()
     });
 
-    return Boolean(response?.handled);
+    const result = convertText(readInjection.result);
+
+    if (!result.ok) {
+      return result;
+    }
+
+    await chrome.scripting.executeScript({
+      target: {
+        tabId: tab.id
+      },
+      func: (text) => navigator.clipboard.writeText(text),
+      args: [result.url]
+    });
+
+    return result;
   } catch (error) {
-    console.warn("Page copy handler unavailable:", error);
-    return false;
+    return {
+      ok: false,
+      error: `クリップボードの変換に失敗しました: ${error.message || error}`
+    };
   }
 }
 
@@ -136,9 +190,15 @@ function convertGoogleUrlToDrivePreview(rawUrl) {
     return null;
   }
 
+  const sourceUrl = extractSupportedGoogleUrl(rawUrl);
+
+  if (!sourceUrl) {
+    return null;
+  }
+
   let url;
   try {
-    url = new URL(rawUrl);
+    url = new URL(sourceUrl);
   } catch {
     return null;
   }
@@ -169,11 +229,17 @@ function convertGoogleUrlToDrivePreview(rawUrl) {
     const fileMatch = url.pathname.match(/^\/file\/d\/([^/]+)\/view/);
 
     if (fileMatch) {
-      return rawUrl;
+      return buildDrivePreviewUrl(fileMatch[1], url.searchParams.get("resourcekey"));
     }
   }
 
   return null;
+}
+
+function extractSupportedGoogleUrl(text) {
+  return text
+    .trim()
+    .match(/https:\/\/(?:docs|drive)\.google\.com\/[^\s"'<>]+/)?.[0] || null;
 }
 
 function buildDrivePreviewUrl(fileId, resourceKey) {
@@ -214,4 +280,46 @@ async function ensureOffscreenDocument() {
     reasons: ["CLIPBOARD"],
     justification: "Copy converted Google Drive preview links to clipboard"
   });
+}
+
+async function notifyActiveTab(result) {
+  const tabs = await chrome.tabs.query({
+    active: true,
+    currentWindow: true
+  });
+  const tab = tabs[0];
+
+  if (!tab?.id || !tab.url) {
+    return;
+  }
+
+  const url = new URL(tab.url);
+  if (url.hostname !== "drive.google.com" && url.hostname !== "docs.google.com") {
+    return;
+  }
+
+  try {
+    await chrome.tabs.sendMessage(tab.id, {
+      type: "SHOW_TOAST",
+      message: result.ok
+        ? "クリップボードのリンクをプレビューリンクに変換しました"
+        : result.error,
+      tone: result.ok ? "success" : "error"
+    });
+  } catch (error) {
+    console.warn("Page notification unavailable:", error);
+  }
+}
+
+async function showActionBadge(result) {
+  await chrome.action.setBadgeBackgroundColor({
+    color: result.ok ? "#137333" : "#b3261e"
+  });
+  await chrome.action.setBadgeText({
+    text: result.ok ? "OK" : "ERR"
+  });
+
+  setTimeout(() => {
+    chrome.action.setBadgeText({ text: "" });
+  }, 2400);
 }
