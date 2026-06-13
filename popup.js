@@ -1,8 +1,12 @@
 const convertButton = document.getElementById("convertClipboard");
 const statusElement = document.getElementById("status");
 
+let language = DPLC_I18N.DEFAULT_LANGUAGE;
+
+initialize();
+
 convertButton.addEventListener("click", async () => {
-  setStatus("変換しています...", "");
+  setStatus(t("converting"), "");
   convertButton.disabled = true;
 
   try {
@@ -13,12 +17,12 @@ convertButton.addEventListener("click", async () => {
     });
 
     if (!result?.ok) {
-      setStatus(result?.error || "クリップボードのリンク変換に失敗しました", "error");
+      setStatus(result?.error || t("convertFailed"), "error");
       return;
     }
 
     await navigator.clipboard.writeText(result.url);
-    setStatus("プレビューリンクをコピーしました", "success");
+    setStatus(t("converted"), "success");
   } catch (error) {
     setStatus(String(error), "error");
   } finally {
@@ -29,4 +33,13 @@ convertButton.addEventListener("click", async () => {
 function setStatus(message, tone) {
   statusElement.textContent = message;
   statusElement.className = tone;
+}
+
+async function initialize() {
+  language = await DPLC_I18N.getLanguage();
+  convertButton.textContent = t("clipboardButton");
+}
+
+function t(key) {
+  return DPLC_I18N.t(language, key);
 }

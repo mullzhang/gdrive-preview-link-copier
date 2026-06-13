@@ -1,13 +1,34 @@
+import "./i18n.js";
+
+const I18N = globalThis.DPLC_I18N;
 const MENU_ID_LINK = "copy-preview-link-from-link";
 const OFFSCREEN_URL = "offscreen.html";
 
-chrome.runtime.onInstalled.addListener(() => {
-  chrome.contextMenus.create({
+chrome.runtime.onInstalled.addListener(async () => {
+  await setContextMenu();
+});
+
+chrome.runtime.onStartup.addListener(async () => {
+  await setContextMenu();
+});
+
+chrome.storage.onChanged.addListener(async (changes, areaName) => {
+  if (areaName !== "sync" || !changes[I18N.LANGUAGE_STORAGE_KEY]) {
+    return;
+  }
+
+  await setContextMenu();
+});
+
+async function setContextMenu() {
+  const language = await I18N.getLanguage();
+  await chrome.contextMenus.removeAll();
+  await chrome.contextMenus.create({
     id: MENU_ID_LINK,
-    title: "プレビューリンクをコピー",
+    title: I18N.t(language, "actionTitle"),
     contexts: ["link"]
   });
-});
+}
 
 chrome.contextMenus.onClicked.addListener(async (info) => {
   if (info.menuItemId !== MENU_ID_LINK) {
@@ -67,7 +88,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type === "CONVERT_PREVIEW_TEXT") {
     (async () => {
       try {
-        sendResponse(convertText(message.text));
+        sendResponse(await convertText(message.text));
       } catch (error) {
         sendResponse({
           ok: false,
@@ -124,13 +145,13 @@ async function convertAndCopy(sourceUrl) {
   await copyText(converted);
 }
 
-function convertText(text) {
+async function convertText(text) {
   const converted = convertGoogleUrlToDrivePreview(text);
 
   if (!converted) {
     return {
       ok: false,
-      error: "有効なGoogle Docs/Sheets/SlidesまたはDriveのリンクが見つかりませんでした"
+      error: await message("noSupportedLink")
     };
   }
 
@@ -150,7 +171,7 @@ async function convertClipboardFromActiveTab() {
   if (!tab?.id) {
     return {
       ok: false,
-      error: "アクティブなタブが見つかりませんでした"
+      error: await message("noActiveTab")
     };
   }
 
@@ -162,7 +183,7 @@ async function convertClipboardFromActiveTab() {
       func: () => navigator.clipboard.readText()
     });
 
-    const result = convertText(readInjection.result);
+    const result = await convertText(readInjection.result);
 
     if (!result.ok) {
       return result;
@@ -180,7 +201,7 @@ async function convertClipboardFromActiveTab() {
   } catch (error) {
     return {
       ok: false,
-      error: `クリップボードの変換に失敗しました: ${error.message || error}`
+      error: `${await message("convertFailed")}: ${error.message || error}`
     };
   }
 }
@@ -302,7 +323,7 @@ async function notifyActiveTab(result) {
     await chrome.tabs.sendMessage(tab.id, {
       type: "SHOW_TOAST",
       message: result.ok
-        ? "クリップボードのリンクをプレビューリンクに変換しました"
+        ? await message("clipboardConverted")
         : result.error,
       tone: result.ok ? "success" : "error"
     });
@@ -322,4 +343,8 @@ async function showActionBadge(result) {
   setTimeout(() => {
     chrome.action.setBadgeText({ text: "" });
   }, 2400);
+}
+
+async function message(key) {
+  return I18N.t(await I18N.getLanguage(), key);
 }

@@ -37,7 +37,7 @@ This extension lets you copy preview links from three places:
 Copy a Google Docs / Sheets / Slides or Drive URL to the clipboard, then either:
 
 1. Click the extension icon.
-2. Click "クリップボードのリンクをプレビューリンクに変換".
+2. Click "Convert clipboard link to preview link".
 
 Or press `Command+Shift+Y`.
 
@@ -48,6 +48,8 @@ This is useful for links copied from the Google Drive desktop app.
 Open a Google Docs / Sheets / Slides file and use the page share menu integration.
 
 If the shortcut does not work, check the shortcut assignment for this extension at `chrome://extensions/shortcuts`.
+
+You can switch the extension UI language between English and Japanese from the extension options page.
 
 ## Supported URLs
 

@@ -2,11 +2,12 @@
   "manifest_version": 3,
   "name": "Drive Preview Link Copier",
   "version": "0.1.0",
-  "description": "Google Docs/Sheets/Slides linksをDrive preview URLに変換してコピーします",
+  "description": "Convert Google Docs, Sheets, and Slides links into Drive preview URLs.",
   "permissions": [
     "contextMenus",
     "activeTab",
     "scripting",
+    "storage",
     "offscreen",
     "clipboardWrite",
     "clipboardRead"
@@ -22,18 +23,23 @@
         "https://docs.google.com/*"
       ],
       "js": [
+        "i18n.js",
         "drive-content.js"
       ],
       "run_at": "document_idle"
     }
   ],
   "action": {
-    "default_title": "プレビューリンクをコピー",
+    "default_title": "Copy preview link",
     "default_popup": "popup.html"
+  },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": false
   },
   "commands": {
     "convert_clipboard_to_preview": {
-      "description": "クリップボードのリンクをプレビューリンクに変換",
+      "description": "Convert the clipboard link into a preview link",
       "suggested_key": {
         "default": "Ctrl+Shift+Y",
         "mac": "Command+Shift+Y"

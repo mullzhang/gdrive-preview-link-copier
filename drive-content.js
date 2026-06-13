@@ -1,10 +1,14 @@
 const MENU_ITEM_ID = "drive-preview-link-copier-menu-item";
 const TOAST_ID = "drive-preview-link-copier-toast";
 const FILE_ID_PATTERN = /^[a-zA-Z0-9_-]{20,}$/;
+const COPY_LINK_LABELS = ["Copy link", "リンクをコピー"];
 
 let lastContextTarget = null;
 let lastActivationTime = 0;
 let toastTimer = null;
+let language = DPLC_I18N.DEFAULT_LANGUAGE;
+
+initializeLanguage();
 
 document.addEventListener(
   "contextmenu",
@@ -40,6 +44,18 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   return false;
 });
 
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName !== "sync" || !changes[DPLC_I18N.LANGUAGE_STORAGE_KEY]) {
+    return;
+  }
+
+  language = DPLC_I18N.normalizeLanguage(
+    changes[DPLC_I18N.LANGUAGE_STORAGE_KEY].newValue
+  );
+  removeInjectedMenuItems();
+  injectIntoVisibleMenus();
+});
+
 const observer = new MutationObserver(() => {
   injectIntoVisibleMenus();
 });
@@ -60,6 +76,12 @@ function injectIntoVisibleMenus() {
   }
 }
 
+async function initializeLanguage() {
+  language = await DPLC_I18N.getLanguage();
+  removeInjectedMenuItems();
+  injectIntoVisibleMenus();
+}
+
 function createMenuItem(copyLinkItem) {
   const referenceItem = copyLinkItem
     ?.closest('[role="menu"]')
@@ -72,11 +94,11 @@ function createMenuItem(copyLinkItem) {
   item.tabIndex = 0;
   item.style.cursor = "pointer";
   item.style.userSelect = "none";
-  replaceMenuItemText(item, "リンクをコピー", "プレビューリンクをコピー");
+  replaceMenuItemText(item, t("actionTitle"));
 
   if (!copyLinkItem && referenceItem) {
     item.className = referenceItem.className;
-    item.textContent = "プレビューリンクをコピー";
+    item.textContent = t("actionTitle");
     item.style.boxSizing = "border-box";
     item.style.minHeight = "36px";
     item.style.paddingTop = "9px";
@@ -106,7 +128,7 @@ function createMenuItem(copyLinkItem) {
       return;
     }
 
-    showToast("プレビューリンクをコピーしました");
+    showToast(t("converted"));
   };
 
   item.addEventListener("pointerdown", activate, true);
@@ -121,14 +143,14 @@ function createMenuItem(copyLinkItem) {
   return item;
 }
 
-function replaceMenuItemText(root, fromText, toText) {
+function replaceMenuItemText(root, toText) {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
 
   while (walker.nextNode()) {
     const node = walker.currentNode;
 
-    if (node.nodeValue?.includes(fromText)) {
-      node.nodeValue = node.nodeValue.replace(fromText, toText);
+    if (isCopyLinkLabel(node.nodeValue)) {
+      node.nodeValue = toText;
       return;
     }
   }
@@ -146,6 +168,12 @@ function removeIds(root) {
   }
 }
 
+function removeInjectedMenuItems() {
+  for (const item of document.querySelectorAll(`#${MENU_ITEM_ID}`)) {
+    item.remove();
+  }
+}
+
 function findOwnMenuItemByText(root, text) {
   return Array.from(root.querySelectorAll('[role="menuitem"]')).find((item) =>
     item.closest('[role="menu"]') === root &&
@@ -160,6 +188,7 @@ function findVisibleCopyLinkItems() {
         '[role="menuitem"]',
         '[role="button"]',
         '[role="option"]',
+        '[aria-label*="Copy link"]',
         '[aria-label*="リンクをコピー"]'
       ].join(", ")
     )
@@ -167,7 +196,7 @@ function findVisibleCopyLinkItems() {
 
   const items = menuItems.filter((item) =>
     isVisible(item) &&
-    (item.textContent || item.getAttribute("aria-label") || "").includes("リンクをコピー") &&
+    isCopyLinkLabel(item.textContent || item.getAttribute("aria-label")) &&
     !item.closest(`#${MENU_ITEM_ID}`)
   );
 
@@ -175,6 +204,17 @@ function findVisibleCopyLinkItems() {
     const container = findMenuContainer(item);
     return container && !container.querySelector(`#${MENU_ITEM_ID}`);
   });
+}
+
+function isCopyLinkLabel(text) {
+  const normalized = String(text || "").replace(/\s+/g, "").toLowerCase();
+  return COPY_LINK_LABELS.some((label) =>
+    normalized.includes(label.replace(/\s+/g, "").toLowerCase())
+  );
+}
+
+function t(key) {
+  return DPLC_I18N.t(language, key);
 }
 
 function findMenuContainer(element) {
@@ -532,7 +572,7 @@ function reportFailure(debug) {
   console.log(debug);
   console.groupEnd();
 
-  showToast("プレビューリンクのコピーに失敗しました", "error");
+  showToast(t("copyFailed"), "error");
 }
 
 function showToast(message, tone = "success") {
