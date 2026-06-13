@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
-  "name": "Drive Preview Link Copier",
-  "version": "0.1.0",
+  "name": "Google Drive Preview Link Copier",
+  "version": "0.2.0",
   "description": "Convert Google Docs, Sheets, and Slides links into Drive preview URLs.",
   "icons": {
     "16": "icons/icon16.png",
