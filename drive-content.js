@@ -1,8 +1,10 @@
 const MENU_ITEM_ID = "drive-preview-link-copier-menu-item";
+const TOAST_ID = "drive-preview-link-copier-toast";
 const FILE_ID_PATTERN = /^[a-zA-Z0-9_-]{20,}$/;
 
 let lastContextTarget = null;
 let lastActivationTime = 0;
+let toastTimer = null;
 
 document.addEventListener(
   "contextmenu",
@@ -126,7 +128,7 @@ function createMenuItem(copyLinkItem) {
       return;
     }
 
-    alert("プレビューリンクをコピーしました。");
+    showToast("プレビューリンクをコピーしました");
   };
 
   item.addEventListener("pointerdown", activate, true);
@@ -598,7 +600,42 @@ function reportFailure(debug) {
   console.log(debug);
   console.groupEnd();
 
-  alert("プレビューリンクのコピーに失敗しました。");
+  showToast("プレビューリンクのコピーに失敗しました", "error");
+}
+
+function showToast(message, tone = "success") {
+  let toast = document.getElementById(TOAST_ID);
+
+  if (!toast) {
+    toast = document.createElement("div");
+    toast.id = TOAST_ID;
+    toast.setAttribute("role", "status");
+    toast.setAttribute("aria-live", "polite");
+    document.documentElement.appendChild(toast);
+  }
+
+  toast.textContent = message;
+  Object.assign(toast.style, {
+    position: "fixed",
+    right: "20px",
+    bottom: "20px",
+    zIndex: "2147483647",
+    maxWidth: "320px",
+    boxSizing: "border-box",
+    padding: "12px 14px",
+    borderRadius: "8px",
+    color: "#fff",
+    background: tone === "error" ? "#b3261e" : "#1f1f1f",
+    boxShadow: "0 6px 18px rgba(0, 0, 0, 0.24)",
+    font: "13px/1.4 system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+    pointerEvents: "none"
+  });
+
+  window.clearTimeout(toastTimer);
+  toastTimer = window.setTimeout(() => {
+    toast.remove();
+    toastTimer = null;
+  }, 2400);
 }
 
 function summarizeClipboardResponse(response) {
