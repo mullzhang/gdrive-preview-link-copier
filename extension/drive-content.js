@@ -1,8 +1,14 @@
 const MENU_ITEM_ID = "drive-preview-link-copier-menu-item";
+const TOAST_ID = "drive-preview-link-copier-toast";
 const FILE_ID_PATTERN = /^[a-zA-Z0-9_-]{20,}$/;
+const COPY_LINK_LABELS = ["Copy link", "リンクをコピー"];
 
 let lastContextTarget = null;
 let lastActivationTime = 0;
+let toastTimer = null;
+let language = DPLC_I18N.DEFAULT_LANGUAGE;
+
+initializeLanguage();
 
 document.addEventListener(
   "contextmenu",
@@ -28,36 +34,26 @@ document.addEventListener(
   true
 );
 
-document.addEventListener(
-  "keydown",
-  async (event) => {
-    if (!isCopyShortcut(event)) {
-      return;
-    }
-
-    event.preventDefault();
-    event.stopPropagation();
-    event.stopImmediatePropagation();
-
-    await copyPreviewFromPage("keydown");
-  },
-  true
-);
-
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  if (message?.type !== "COPY_PREVIEW_FROM_PAGE") {
+  if (message?.type === "SHOW_TOAST") {
+    showToast(message.message, message.tone);
+    sendResponse({ ok: true });
     return false;
   }
 
-  (async () => {
-    const result = await copyPreviewFromPage(`message:${message.source || "unknown"}`);
-    sendResponse({
-      handled: true,
-      ok: result.ok
-    });
-  })();
+  return false;
+});
 
-  return true;
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName !== "sync" || !changes[DPLC_I18N.LANGUAGE_STORAGE_KEY]) {
+    return;
+  }
+
+  language = DPLC_I18N.normalizeLanguage(
+    changes[DPLC_I18N.LANGUAGE_STORAGE_KEY].newValue
+  );
+  removeInjectedMenuItems();
+  injectIntoVisibleMenus();
 });
 
 const observer = new MutationObserver(() => {
@@ -80,6 +76,12 @@ function injectIntoVisibleMenus() {
   }
 }
 
+async function initializeLanguage() {
+  language = await DPLC_I18N.getLanguage();
+  removeInjectedMenuItems();
+  injectIntoVisibleMenus();
+}
+
 function createMenuItem(copyLinkItem) {
   const referenceItem = copyLinkItem
     ?.closest('[role="menu"]')
@@ -92,11 +94,11 @@ function createMenuItem(copyLinkItem) {
   item.tabIndex = 0;
   item.style.cursor = "pointer";
   item.style.userSelect = "none";
-  replaceMenuItemText(item, "リンクをコピー", "プレビューリンクをコピー");
+  replaceMenuItemText(item, t("actionTitle"));
 
   if (!copyLinkItem && referenceItem) {
     item.className = referenceItem.className;
-    item.textContent = "プレビューリンクをコピー";
+    item.textContent = t("actionTitle");
     item.style.boxSizing = "border-box";
     item.style.minHeight = "36px";
     item.style.paddingTop = "9px";
@@ -122,11 +124,13 @@ function createMenuItem(copyLinkItem) {
       : await copyPreviewUrlFromDriveMenu(copyLinkItem, debug);
 
     if (!result.ok) {
+      closeOpenMenus();
       reportFailure(debug);
       return;
     }
 
-    alert("プレビューリンクをコピーしました。");
+    closeOpenMenus();
+    showToast(t("converted"));
   };
 
   item.addEventListener("pointerdown", activate, true);
@@ -141,14 +145,14 @@ function createMenuItem(copyLinkItem) {
   return item;
 }
 
-function replaceMenuItemText(root, fromText, toText) {
+function replaceMenuItemText(root, toText) {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
 
   while (walker.nextNode()) {
     const node = walker.currentNode;
 
-    if (node.nodeValue?.includes(fromText)) {
-      node.nodeValue = node.nodeValue.replace(fromText, toText);
+    if (isCopyLinkLabel(node.nodeValue)) {
+      node.nodeValue = toText;
       return;
     }
   }
@@ -166,6 +170,65 @@ function removeIds(root) {
   }
 }
 
+function removeInjectedMenuItems() {
+  for (const item of document.querySelectorAll(`#${MENU_ITEM_ID}`)) {
+    item.remove();
+  }
+}
+
+function closeOpenMenus() {
+  const targets = [
+    document.activeElement,
+    ...document.querySelectorAll('[role="menu"], [role="listbox"]'),
+    document,
+    window
+  ].filter(Boolean);
+
+  for (const target of targets) {
+    dispatchEscape(target);
+  }
+
+  dispatchOutsidePointerSequence();
+  window.setTimeout(dispatchOutsidePointerSequence, 0);
+}
+
+function dispatchEscape(target) {
+  for (const type of ["keydown", "keyup"]) {
+    target.dispatchEvent(
+      new KeyboardEvent(type, {
+        key: "Escape",
+        code: "Escape",
+        keyCode: 27,
+        which: 27,
+        bubbles: true,
+        cancelable: true
+      })
+    );
+  }
+}
+
+function dispatchOutsidePointerSequence() {
+  const target = document.body || document.documentElement;
+  const events = [
+    ["pointerdown", PointerEvent],
+    ["mousedown", MouseEvent],
+    ["mouseup", MouseEvent],
+    ["click", MouseEvent]
+  ];
+
+  for (const [type, EventConstructor] of events) {
+    target.dispatchEvent(
+      new EventConstructor(type, {
+        bubbles: true,
+        cancelable: true,
+        pointerType: "mouse",
+        clientX: 1,
+        clientY: 1
+      })
+    );
+  }
+}
+
 function findOwnMenuItemByText(root, text) {
   return Array.from(root.querySelectorAll('[role="menuitem"]')).find((item) =>
     item.closest('[role="menu"]') === root &&
@@ -180,6 +243,7 @@ function findVisibleCopyLinkItems() {
         '[role="menuitem"]',
         '[role="button"]',
         '[role="option"]',
+        '[aria-label*="Copy link"]',
         '[aria-label*="リンクをコピー"]'
       ].join(", ")
     )
@@ -187,7 +251,7 @@ function findVisibleCopyLinkItems() {
 
   const items = menuItems.filter((item) =>
     isVisible(item) &&
-    (item.textContent || item.getAttribute("aria-label") || "").includes("リンクをコピー") &&
+    isCopyLinkLabel(item.textContent || item.getAttribute("aria-label")) &&
     !item.closest(`#${MENU_ITEM_ID}`)
   );
 
@@ -195,6 +259,17 @@ function findVisibleCopyLinkItems() {
     const container = findMenuContainer(item);
     return container && !container.querySelector(`#${MENU_ITEM_ID}`);
   });
+}
+
+function isCopyLinkLabel(text) {
+  const normalized = String(text || "").replace(/\s+/g, "").toLowerCase();
+  return COPY_LINK_LABELS.some((label) =>
+    normalized.includes(label.replace(/\s+/g, "").toLowerCase())
+  );
+}
+
+function t(key) {
+  return DPLC_I18N.t(language, key);
 }
 
 function findMenuContainer(element) {
@@ -207,37 +282,6 @@ function findMenuContainer(element) {
       '[aria-modal="true"]'
     ].join(", ")
   );
-}
-
-function isCopyShortcut(event) {
-  return (
-    event.metaKey &&
-    event.shiftKey &&
-    !event.ctrlKey &&
-    !event.altKey &&
-    event.code === "KeyY"
-  );
-}
-
-async function copyPreviewFromPage(source) {
-  const debug = createDebugLog(null);
-  debug.steps.push({
-    step: "trigger",
-    ok: true,
-    detail: source
-  });
-
-  const fileInfo =
-    readFileInfoFromUrl(window.location.href) || findFileInfo(debug);
-  const result = fileInfo
-    ? await copyPreviewUrlFromFileInfo(fileInfo, debug)
-    : await copyPreviewUrlFromCurrentUrl(debug);
-
-  if (!result.ok) {
-    reportFailure(debug);
-  }
-
-  return result;
 }
 
 function findFileInfo(debug) {
@@ -316,21 +360,6 @@ async function copyPreviewUrlFromDriveMenu(copyLinkItem, debug) {
   }
 
   return writeText(converted, debug, "clipboard:writeConvertedCopiedText");
-}
-
-async function copyPreviewUrlFromCurrentUrl(debug) {
-  const converted = convertGoogleUrlToDrivePreview(window.location.href);
-  debug.steps.push({
-    step: "convertCurrentUrl",
-    ok: Boolean(converted),
-    detail: converted || window.location.href
-  });
-
-  if (!converted) {
-    return { ok: false };
-  }
-
-  return writeText(converted, debug, "clipboard:writeCurrentUrl");
 }
 
 function readFileInfoFromSelectedRows() {
@@ -598,7 +627,42 @@ function reportFailure(debug) {
   console.log(debug);
   console.groupEnd();
 
-  alert("プレビューリンクのコピーに失敗しました。");
+  showToast(t("copyFailed"), "error");
+}
+
+function showToast(message, tone = "success") {
+  let toast = document.getElementById(TOAST_ID);
+
+  if (!toast) {
+    toast = document.createElement("div");
+    toast.id = TOAST_ID;
+    toast.setAttribute("role", "status");
+    toast.setAttribute("aria-live", "polite");
+    document.documentElement.appendChild(toast);
+  }
+
+  toast.textContent = message;
+  Object.assign(toast.style, {
+    position: "fixed",
+    right: "20px",
+    bottom: "20px",
+    zIndex: "2147483647",
+    maxWidth: "320px",
+    boxSizing: "border-box",
+    padding: "12px 14px",
+    borderRadius: "8px",
+    color: "#fff",
+    background: tone === "error" ? "#b3261e" : "#1f1f1f",
+    boxShadow: "0 6px 18px rgba(0, 0, 0, 0.24)",
+    font: "13px/1.4 system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+    pointerEvents: "none"
+  });
+
+  window.clearTimeout(toastTimer);
+  toastTimer = window.setTimeout(() => {
+    toast.remove();
+    toastTimer = null;
+  }, 2400);
 }
 
 function summarizeClipboardResponse(response) {

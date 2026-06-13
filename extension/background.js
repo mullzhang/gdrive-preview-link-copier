@@ -1,13 +1,34 @@
+import "./i18n.js";
+
+const I18N = globalThis.DPLC_I18N;
 const MENU_ID_LINK = "copy-preview-link-from-link";
 const OFFSCREEN_URL = "offscreen.html";
 
-chrome.runtime.onInstalled.addListener(() => {
-  chrome.contextMenus.create({
+chrome.runtime.onInstalled.addListener(async () => {
+  await setContextMenu();
+});
+
+chrome.runtime.onStartup.addListener(async () => {
+  await setContextMenu();
+});
+
+chrome.storage.onChanged.addListener(async (changes, areaName) => {
+  if (areaName !== "sync" || !changes[I18N.LANGUAGE_STORAGE_KEY]) {
+    return;
+  }
+
+  await setContextMenu();
+});
+
+async function setContextMenu() {
+  const language = await I18N.getLanguage();
+  await chrome.contextMenus.removeAll();
+  await chrome.contextMenus.create({
     id: MENU_ID_LINK,
-    title: "プレビューリンクをコピー",
+    title: I18N.t(language, "actionTitle"),
     contexts: ["link"]
   });
-});
+}
 
 chrome.contextMenus.onClicked.addListener(async (info) => {
   if (info.menuItemId !== MENU_ID_LINK) {
@@ -17,13 +38,14 @@ chrome.contextMenus.onClicked.addListener(async (info) => {
   await convertAndCopy(info.linkUrl);
 });
 
-chrome.action.onClicked.addListener(async (tab) => {
-  const handledByPage = await copyFromPage(tab, "action");
-  if (handledByPage) {
+chrome.commands.onCommand.addListener(async (command) => {
+  if (command !== "convert_clipboard_to_preview") {
     return;
   }
 
-  await convertAndCopy(tab?.url);
+  const result = await convertClipboardFromActiveTab();
+  await showActionBadge(result);
+  await notifyActiveTab(result);
 });
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
@@ -52,6 +74,21 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       try {
         await copyText(message.text);
         sendResponse({ ok: true });
+      } catch (error) {
+        sendResponse({
+          ok: false,
+          error: String(error)
+        });
+      }
+    })();
+
+    return true;
+  }
+
+  if (message?.type === "CONVERT_PREVIEW_TEXT") {
+    (async () => {
+      try {
+        sendResponse(await convertText(message.text));
       } catch (error) {
         sendResponse({
           ok: false,
@@ -108,26 +145,64 @@ async function convertAndCopy(sourceUrl) {
   await copyText(converted);
 }
 
-async function copyFromPage(tab, source) {
-  if (!tab?.id || !tab.url) {
-    return false;
+async function convertText(text) {
+  const converted = convertGoogleUrlToDrivePreview(text);
+
+  if (!converted) {
+    return {
+      ok: false,
+      error: await message("noSupportedLink")
+    };
   }
 
-  const url = new URL(tab.url);
-  if (url.hostname !== "drive.google.com" && url.hostname !== "docs.google.com") {
-    return false;
+  return {
+    ok: true,
+    url: converted
+  };
+}
+
+async function convertClipboardFromActiveTab() {
+  const tabs = await chrome.tabs.query({
+    active: true,
+    currentWindow: true
+  });
+  const tab = tabs[0];
+
+  if (!tab?.id) {
+    return {
+      ok: false,
+      error: await message("noActiveTab")
+    };
   }
 
   try {
-    const response = await chrome.tabs.sendMessage(tab.id, {
-      type: "COPY_PREVIEW_FROM_PAGE",
-      source
+    const [readInjection] = await chrome.scripting.executeScript({
+      target: {
+        tabId: tab.id
+      },
+      func: () => navigator.clipboard.readText()
     });
 
-    return Boolean(response?.handled);
+    const result = await convertText(readInjection.result);
+
+    if (!result.ok) {
+      return result;
+    }
+
+    await chrome.scripting.executeScript({
+      target: {
+        tabId: tab.id
+      },
+      func: (text) => navigator.clipboard.writeText(text),
+      args: [result.url]
+    });
+
+    return result;
   } catch (error) {
-    console.warn("Page copy handler unavailable:", error);
-    return false;
+    return {
+      ok: false,
+      error: `${await message("convertFailed")}: ${error.message || error}`
+    };
   }
 }
 
@@ -136,9 +211,15 @@ function convertGoogleUrlToDrivePreview(rawUrl) {
     return null;
   }
 
+  const sourceUrl = extractSupportedGoogleUrl(rawUrl);
+
+  if (!sourceUrl) {
+    return null;
+  }
+
   let url;
   try {
-    url = new URL(rawUrl);
+    url = new URL(sourceUrl);
   } catch {
     return null;
   }
@@ -169,11 +250,17 @@ function convertGoogleUrlToDrivePreview(rawUrl) {
     const fileMatch = url.pathname.match(/^\/file\/d\/([^/]+)\/view/);
 
     if (fileMatch) {
-      return rawUrl;
+      return buildDrivePreviewUrl(fileMatch[1], url.searchParams.get("resourcekey"));
     }
   }
 
   return null;
+}
+
+function extractSupportedGoogleUrl(text) {
+  return text
+    .trim()
+    .match(/https:\/\/(?:docs|drive)\.google\.com\/[^\s"'<>]+/)?.[0] || null;
 }
 
 function buildDrivePreviewUrl(fileId, resourceKey) {
@@ -214,4 +301,50 @@ async function ensureOffscreenDocument() {
     reasons: ["CLIPBOARD"],
     justification: "Copy converted Google Drive preview links to clipboard"
   });
+}
+
+async function notifyActiveTab(result) {
+  const tabs = await chrome.tabs.query({
+    active: true,
+    currentWindow: true
+  });
+  const tab = tabs[0];
+
+  if (!tab?.id || !tab.url) {
+    return;
+  }
+
+  const url = new URL(tab.url);
+  if (url.hostname !== "drive.google.com" && url.hostname !== "docs.google.com") {
+    return;
+  }
+
+  try {
+    await chrome.tabs.sendMessage(tab.id, {
+      type: "SHOW_TOAST",
+      message: result.ok
+        ? await message("clipboardConverted")
+        : result.error,
+      tone: result.ok ? "success" : "error"
+    });
+  } catch (error) {
+    console.warn("Page notification unavailable:", error);
+  }
+}
+
+async function showActionBadge(result) {
+  await chrome.action.setBadgeBackgroundColor({
+    color: result.ok ? "#137333" : "#b3261e"
+  });
+  await chrome.action.setBadgeText({
+    text: result.ok ? "OK" : "ERR"
+  });
+
+  setTimeout(() => {
+    chrome.action.setBadgeText({ text: "" });
+  }, 2400);
+}
+
+async function message(key) {
+  return I18N.t(await I18N.getLanguage(), key);
 }

@@ -2,20 +2,49 @@
 
 A Chrome extension that converts Google Docs / Sheets / Slides links into Google Drive preview URLs and copies them to the clipboard.
 
+## Motivation
+
+Google Drive links for Office files can open the file in Google's web editors, such as Google Docs, Sheets, or Slides. That is convenient, but it can also change the document's appearance, especially fonts and layout.
+
+Opening the file through Google Drive's preview view avoids that automatic conversion path and keeps the file closer to its original rendering. If the Google Drive desktop app is installed, the preview page can also be used as a path to open Office files in the corresponding desktop app.
+
 ## Features
 
-This extension lets you copy preview links from three places:
+This extension lets you copy preview links from these places:
 
 1. The right-click menu in the Google Drive file list
 2. The share menu in the top-right corner of Google Docs / Sheets / Slides
-3. The extension icon or keyboard shortcut while viewing a Google Docs / Sheets / Slides file
+3. The extension icon menu or keyboard shortcut from a URL already copied to the clipboard
 
 ## Installation
 
 1. Open `chrome://extensions` in Chrome.
 2. Enable Developer mode.
 3. Click "Load unpacked".
-4. Select this extension folder.
+4. Select the `extension/` folder in this repository.
+
+## Repository Layout
+
+```text
+extension/       Chrome extension source loaded by Developer mode
+  manifest.json
+  icons/
+scripts/         Project maintenance scripts
+dist/            Generated ZIP files, ignored by Git
+PUBLISHING.md    Chrome Web Store publishing notes
+```
+
+Keep `manifest.json` directly under `extension/`. Chrome Developer mode loads the folder that contains `manifest.json`, and the release ZIP must also place `manifest.json` at the ZIP root.
+
+## Build
+
+Create a Chrome Web Store-ready ZIP with:
+
+```sh
+scripts/build-zip.sh
+```
+
+The script reads the version from `extension/manifest.json` and writes `dist/drive-preview-link-copier-{version}.zip`. It packages the extension files with `manifest.json` at the ZIP root.
 
 ## Usage
 
@@ -32,11 +61,31 @@ This extension lets you copy preview links from three places:
 2. Open the share menu in the top-right corner.
 3. Click "Copy preview link" below "Copy link".
 
-### Copy from the extension icon or shortcut
+### Convert from the clipboard
 
-Open a Google Docs / Sheets / Slides file, then click the extension icon or press `Command+Shift+Y`.
+Copy a Google Docs / Sheets / Slides or Drive URL to the clipboard, then either:
+
+1. Click the extension icon.
+2. Click "Convert clipboard link to preview link".
+
+Or press `Command+Shift+Y`.
+
+This is useful for links copied from the Google Drive desktop app.
 
 If the shortcut does not work, check the shortcut assignment for this extension at `chrome://extensions/shortcuts`.
+
+The shortcut runs in the active tab, so it may not work on Chrome internal pages such as `chrome://extensions`.
+
+### Language
+
+The default UI language is English. You can switch the extension UI between English and Japanese from the extension options page:
+
+1. Open `chrome://extensions`.
+2. Open the details page for this extension.
+3. Click "Extension options".
+4. Select "English" or "Japanese".
+
+The context menu, popup, injected menu item, and status messages follow this setting.
 
 ## Supported URLs
 
@@ -47,6 +96,12 @@ If the shortcut does not work, check the shortcut assignment for this extension 
 - `https://drive.google.com/file/d/{FILE_ID}/view`
 
 If the original URL contains a `resourcekey`, it is preserved in the converted URL.
+
+## Behavior
+
+- The preview link is copied directly to the clipboard.
+- A short non-blocking status message is shown after copy operations.
+- Google Drive context menus are closed automatically after "Copy preview link" runs.
 
 ## Example
 
