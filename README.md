@@ -21,7 +21,30 @@ This extension lets you copy preview links from these places:
 1. Open `chrome://extensions` in Chrome.
 2. Enable Developer mode.
 3. Click "Load unpacked".
-4. Select this extension folder.
+4. Select the `extension/` folder in this repository.
+
+## Repository Layout
+
+```text
+extension/       Chrome extension source loaded by Developer mode
+  manifest.json
+  icons/
+scripts/         Project maintenance scripts
+dist/            Generated ZIP files, ignored by Git
+PUBLISHING.md    Chrome Web Store publishing notes
+```
+
+Keep `manifest.json` directly under `extension/`. Chrome Developer mode loads the folder that contains `manifest.json`, and the release ZIP must also place `manifest.json` at the ZIP root.
+
+## Build
+
+Create a Chrome Web Store-ready ZIP with:
+
+```sh
+scripts/build-zip.sh
+```
+
+The script reads the version from `extension/manifest.json` and writes `dist/drive-preview-link-copier-{version}.zip`. It packages the extension files with `manifest.json` at the ZIP root.
 
 ## Usage
 
