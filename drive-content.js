@@ -124,10 +124,12 @@ function createMenuItem(copyLinkItem) {
       : await copyPreviewUrlFromDriveMenu(copyLinkItem, debug);
 
     if (!result.ok) {
+      closeOpenMenus();
       reportFailure(debug);
       return;
     }
 
+    closeOpenMenus();
     showToast(t("converted"));
   };
 
@@ -171,6 +173,59 @@ function removeIds(root) {
 function removeInjectedMenuItems() {
   for (const item of document.querySelectorAll(`#${MENU_ITEM_ID}`)) {
     item.remove();
+  }
+}
+
+function closeOpenMenus() {
+  const targets = [
+    document.activeElement,
+    ...document.querySelectorAll('[role="menu"], [role="listbox"]'),
+    document,
+    window
+  ].filter(Boolean);
+
+  for (const target of targets) {
+    dispatchEscape(target);
+  }
+
+  dispatchOutsidePointerSequence();
+  window.setTimeout(dispatchOutsidePointerSequence, 0);
+}
+
+function dispatchEscape(target) {
+  for (const type of ["keydown", "keyup"]) {
+    target.dispatchEvent(
+      new KeyboardEvent(type, {
+        key: "Escape",
+        code: "Escape",
+        keyCode: 27,
+        which: 27,
+        bubbles: true,
+        cancelable: true
+      })
+    );
+  }
+}
+
+function dispatchOutsidePointerSequence() {
+  const target = document.body || document.documentElement;
+  const events = [
+    ["pointerdown", PointerEvent],
+    ["mousedown", MouseEvent],
+    ["mouseup", MouseEvent],
+    ["click", MouseEvent]
+  ];
+
+  for (const [type, EventConstructor] of events) {
+    target.dispatchEvent(
+      new EventConstructor(type, {
+        bubbles: true,
+        cancelable: true,
+        pointerType: "mouse",
+        clientX: 1,
+        clientY: 1
+      })
+    );
   }
 }
 
